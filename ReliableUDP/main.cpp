@@ -14,14 +14,27 @@ void printUsage()
   std::exit(EXIT_FAILURE);
 }
 
-void mainError(const char* errorFormat, ...)
+void vMainInfo(const char* infoFormat, va_list args)
 {
   printf("%-8s", "Main: ");
+  vprintf(infoFormat, args);
+  printf("\n");
+}
+
+void mainInfo(const char* infoFormat, ...)
+{
+  va_list args;
+  va_start(args, infoFormat);
+  vMainInfo(infoFormat, args);
+  va_end(args);
+}
+
+void mainError(const char* errorFormat, ...)
+{
   va_list args;
   va_start(args, errorFormat);
-  vprintf(errorFormat, args);
+  vMainInfo(errorFormat, args);
   va_end(args);
-  printf("\n");
   std::exit(EXIT_FAILURE);
 }
 
@@ -33,6 +46,7 @@ int main(int argc, char* argv[])
   {
     printUsage();
   }
+  mainInfo("sender W = %llu, RTT %g sec, loss %g / %g, link %g Mbps", args.WindowSize, args.RTT, args.LossForward, args.LossReturn, args.BandwidthBottleneck);
   UINT64 dwordBufSize = (UINT64)1 << args.Power;
   DWORD *dwordBuf = new DWORD[dwordBufSize]; // user-requested buffer
   for (UINT64 i = 0; i < dwordBufSize; i++) // required initialization

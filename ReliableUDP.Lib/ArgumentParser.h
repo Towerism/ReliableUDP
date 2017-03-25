@@ -10,7 +10,7 @@ struct Arguments
   char* Host = nullptr;
   UINT64 Power = 0;
   UINT64 WindowSize = 0;
-  UINT64 RTT = 0;
+  float RTT = 0;
   float LossForward = 0.;
   float LossReturn = 0.;
   float BandwidthBottleneck = 0.;
