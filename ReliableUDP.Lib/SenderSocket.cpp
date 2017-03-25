@@ -82,7 +82,8 @@ int SenderSocket::Open(const char* host, DWORD port, DWORD senderWindow, LinkPro
     if (receiveResult == SOCKET_ERROR)
       return FAILED_RECV;
     PrintSynFinReception("SYN-ACK", rh);
-    rto = 2 * (Time() - t);
+    lp->RTT = Time() - t;
+    rto = 3 * lp->RTT;
     printf("; setting initial RTO to %.3f\n", rto);
     return STATUS_OK;
   }
