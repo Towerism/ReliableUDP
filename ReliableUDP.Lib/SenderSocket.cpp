@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <string>
 
-SenderSocket::SenderSocket() : constructionTime(timeGetTime())
+SenderSocket::SenderSocket() : ConstructionTime(timeGetTime())
 {
   WSADATA wsaData;
   WORD wVersionRequested = MAKEWORD(2, 2);
@@ -14,9 +14,9 @@ SenderSocket::SenderSocket() : constructionTime(timeGetTime())
     printf("WSAStartup error %d\n", WSAGetLastError());
     std::exit(EXIT_FAILURE);
   }
-  sock = socket(AF_INET, SOCK_DGRAM, 0);
-  sock = socket(AF_INET, SOCK_DGRAM, 0);
-  if (sock == INVALID_SOCKET) {
+  Socket = socket(AF_INET, SOCK_DGRAM, 0);
+  Socket = socket(AF_INET, SOCK_DGRAM, 0);
+  if (Socket == INVALID_SOCKET) {
     printf("socket() generated error %d\n", WSAGetLastError());
     std::exit(EXIT_FAILURE);
   }
@@ -25,7 +25,7 @@ SenderSocket::SenderSocket() : constructionTime(timeGetTime())
   local.sin_family = AF_INET;
   local.sin_port = htons(0);
   local.sin_addr.s_addr = htonl(INADDR_ANY);
-  if (bind(sock, (struct sockaddr*)(&local), sizeof(local)) == SOCKET_ERROR) {
+  if (bind(Socket, (struct sockaddr*)(&local), sizeof(local)) == SOCKET_ERROR) {
     printf("bind() failed with error %d\n", WSAGetLastError());
     std::exit(EXIT_FAILURE);
   }
@@ -44,13 +44,13 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
 
   fd_set readers;
   FD_ZERO(&readers);
-  FD_SET(sock, &readers);
+  FD_SET(Socket, &readers);
   struct timeval timeout;
-  timeout.tv_sec = rto;
-  timeout.tv_usec = (rto - timeout.tv_sec) * 1000000;
-  if (select(sock, &readers, nullptr, nullptr, &timeout) > 0u) {
+  timeout.tv_sec = Rto;
+  timeout.tv_usec = (Rto - timeout.tv_sec) * 1000000;
+  if (select(Socket, &readers, nullptr, nullptr, &timeout) > 0u) {
     printf("[%6.3f] <-- ", Time());
-    if ((recvfrom(sock, packet, packetLength, 0, (struct sockaddr*)(&senderAddr), &senderAddrSize)) == SOCKET_ERROR) {
+    if ((recvfrom(Socket, packet, packetLength, 0, (struct sockaddr*)(&senderAddr), &senderAddrSize)) == SOCKET_ERROR) {
       printf("failed recvfrom with %d", WSAGetLastError());
       return FAILED_RECV;
     }
@@ -61,6 +61,8 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
 
 int SenderSocket::Open(const char* host, DWORD port, DWORD senderWindow, LinkProperties* lp)
 {
+  if (Connected)
+    return ALREADY_CONNECTED;
   if (!RemoteInfoFromHost(host, port)) 
     return INVALID_NAME;
   SenderSynHeader synHeader;
@@ -79,20 +81,21 @@ int SenderSocket::Open(const char* host, DWORD port, DWORD senderWindow, LinkPro
     int receiveResult = ReceivePacket((char*)(&rh), sizeof(rh), true);
     if (receiveResult == SELECT_TIMEOUT) 
       continue;
-    if (receiveResult == SOCKET_ERROR)
+    if (receiveResult == FAILED_RECV)
       return FAILED_RECV;
     PrintSynFinReception("SYN-ACK", rh);
     lp->RTT = Time() - t;
-    rto = 3 * lp->RTT;
-    printf("; setting initial RTO to %.3f\n", rto);
+    Rto = 3 * lp->RTT;
+    printf("; setting initial RTO to %.3f\n", Rto);
+    Connected = true;
     return STATUS_OK;
   }
-  return FAILED_SEND;
+  return TIMEOUT;
 }
 
 bool SenderSocket::SendPacket(char* pkt, size_t pktLength)
 {
-  if (sendto(sock, pkt, pktLength, 0, (struct sockaddr*)(&remote), sizeof(remote)) == SOCKET_ERROR)
+  if (sendto(Socket, pkt, pktLength, 0, (struct sockaddr*)(&Remote), sizeof(Remote)) == SOCKET_ERROR)
   {
     printf("failed sendto with %d", WSAGetLastError());
     return false;
@@ -102,7 +105,7 @@ bool SenderSocket::SendPacket(char* pkt, size_t pktLength)
 
 void SenderSocket::PrintSynFinAttempt(const char* packetType, DWORD sequence, size_t maximumAttempts, size_t attempt)
 {
-  printf("%s %d (attempt %zu of %zu, RTO %.3f)", packetType, sequence, attempt, maximumAttempts, rto);
+  printf("%s %d (attempt %zu of %zu, Rto %.3f)", packetType, sequence, attempt, maximumAttempts, Rto);
 }
 
 void SenderSocket::PrintSynFinReception(const char* packetType, ReceiverHeader rh)
@@ -124,15 +127,15 @@ bool SenderSocket::RemoteInfoFromHost(const char* host, DWORD port)
       return false;
     }
     // take the first IP address and copy into sin_addr
-    memcpy((char *)&(remote.sin_addr), hostname->h_addr, hostname->h_length);
+    memcpy((char *)&(Remote.sin_addr), hostname->h_addr, hostname->h_length);
   } else {
     // if a valid IP, directly drop its binary version into sin_addr
-    remote.sin_addr.S_un.S_addr = IP;
+    Remote.sin_addr.S_un.S_addr = IP;
   }
 
   // setup the port # and protocol type
-  remote.sin_family = AF_INET;
-  remote.sin_port = htons(port); // host-to-network flips the byte order
+  Remote.sin_family = AF_INET;
+  Remote.sin_port = htons(port); // host-to-network flips the byte order
   return true;
 }
 
@@ -143,6 +146,8 @@ int SenderSocket::Send(const char* buffer, DWORD bytes)
 
 int SenderSocket::Close()
 {
+  if (!Connected)
+    return NOT_CONNECTED;
   SenderSynHeader synHeader;
   synHeader.sdh.flags.FIN = 1;
   synHeader.sdh.seq = 0;
@@ -160,6 +165,7 @@ int SenderSocket::Close()
       return FAILED_RECV;
     PrintSynFinReception("FIN-ACK", rh);
     printf("\n");
+    Connected = false;
     return STATUS_OK;
   }
   return FAILED_SEND;

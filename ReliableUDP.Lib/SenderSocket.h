@@ -71,16 +71,17 @@ public:
   int Close();
 
 private:
-  DWORD constructionTime;
-  SOCKET sock;
-  struct sockaddr_in remote;
-  float rto = 1.;
+  bool Connected = false;
+  DWORD ConstructionTime;
+  SOCKET Socket;
+  struct sockaddr_in Remote;
+  float Rto = 1.;
 
   bool RemoteInfoFromHost(const char* host, DWORD port);
   bool SendPacket(char* pkt, size_t pktLength);
   void PrintSynFinAttempt(const char* packetType, DWORD sequence, size_t maximumAttempts, size_t attempt);
   void PrintSynFinReception(const char* packetType, ReceiverHeader rh);
 
-  const char* Ip() const { return inet_ntoa(remote.sin_addr); }
-  float Time() const { return static_cast<float>(timeGetTime() - constructionTime) / 1000; }
+  const char* Ip() const { return inet_ntoa(Remote.sin_addr); }
+  float Time() const { return static_cast<float>(timeGetTime() - ConstructionTime) / 1000; }
 };
