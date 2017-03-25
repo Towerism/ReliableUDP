@@ -18,7 +18,6 @@ void vMainInfo(const char* infoFormat, va_list args)
 {
   printf("%-8s", "Main: ");
   vprintf(infoFormat, args);
-  printf("\n");
 }
 
 void mainInfo(const char* infoFormat, ...)
@@ -46,11 +45,14 @@ int main(int argc, char* argv[])
   {
     printUsage();
   }
-  mainInfo("sender W = %llu, RTT %g sec, loss %g / %g, link %g Mbps", args.WindowSize, args.RTT, args.LossForward, args.LossReturn, args.BandwidthBottleneck);
+  mainInfo("sender W = %llu, RTT %g sec, loss %g / %g, link %g Mbps\n", args.WindowSize, args.RTT, args.LossForward, args.LossReturn, args.BandwidthBottleneck);
+  mainInfo("initializing DWORD array with 2^%llu elements... ", args.Power);
+  auto time = timeGetTime();
   UINT64 dwordBufSize = (UINT64)1 << args.Power;
   DWORD *dwordBuf = new DWORD[dwordBufSize]; // user-requested buffer
   for (UINT64 i = 0; i < dwordBufSize; i++) // required initialization
     dwordBuf[i] = i;
+  printf("done in %lu ms\n", timeGetTime() - time);
   SenderSocket ss; // instance of your class
   int status;
   LinkProperties lp;
@@ -59,7 +61,7 @@ int main(int argc, char* argv[])
   lp.pLoss[FORWARD_PATH] = args.LossForward;
   lp.pLoss[RETURN_PATH] = args.LossReturn;
   if ((status = ss.Open(args.Host, MAGIC_PORT, args.WindowSize, &lp)) != STATUS_OK)
-    mainError("connect failed with status %d", status);
+    mainError("connect failed with status %d\n", status);
   char *charBuf = (char*)dwordBuf; // this buffer goes into socket
   UINT64 byteBufferSize = dwordBufSize << 2; // convert to bytes
   UINT64 off = 0; // current position in buffer
@@ -72,6 +74,6 @@ int main(int argc, char* argv[])
       off += bytes;
   }
   if ((status = ss.Close()) != STATUS_OK)
-    mainError("close failed with status %d", status);
+    mainError("close failed with status %d\n", status);
   return 0;
 }

@@ -18,6 +18,8 @@
 #define TIMEOUT 5 // timeout after all retx attempts are exhausted
 #define FAILED_RECV 6 // recvfrom() failed in kernel
 
+#define SELECT_TIMEOUT 99 // non-fatal timeout error 
+
 #define MAGIC_PROTOCOL 0x8311AA
 
 #define BITS_IN_MEGABIT 1e6
@@ -50,8 +52,7 @@ struct SenderSynHeader {
   SenderDataHeader sdh;
   LinkProperties lp;
 };
-class ReceiverHeader {
-public:
+struct ReceiverHeader {
   Flags flags;
   DWORD recvWnd; // receiver window for flow control (in pkts)
   DWORD ackSeq; // ack value = next expected sequence
@@ -61,7 +62,25 @@ public:
 class SenderSocket
 {
 public:
+  SenderSocket();
+  ~SenderSocket();
+  int ReceivePacket(char* packet, size_t packetLength, bool printTimestamp);
+
   int Open(const char* host, DWORD port, DWORD senderWindow, LinkProperties* lp);
   int Send(const char* buffer, DWORD bytes);
   int Close();
+
+private:
+  DWORD constructionTime;
+  SOCKET sock;
+  struct sockaddr_in remote;
+  float rto = 1.;
+
+  bool RemoteInfoFromHost(const char* host, DWORD port);
+  bool SendPacket(char* pkt, size_t pktLength);
+  void PrintSynFinAttempt(const char* packetType, DWORD sequence, size_t maximumAttempts, size_t attempt);
+  void PrintSynFinReception(const char* packetType, ReceiverHeader rh);
+
+  const char* Ip() const { return inet_ntoa(remote.sin_addr); }
+  float Time() const { return static_cast<float>(timeGetTime() - constructionTime) / 1000; }
 };
