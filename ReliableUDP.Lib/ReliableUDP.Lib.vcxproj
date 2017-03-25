@@ -110,11 +110,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="ArgumentParser.h" />
     <ClInclude Include="libraries.h" />
-    <ClInclude Include="stub.h" />
+    <ClInclude Include="SenderSocket.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="stub.cpp" />
+    <ClCompile Include="ArgumentParser.cpp" />
+    <ClCompile Include="SenderSocket.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

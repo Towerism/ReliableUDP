@@ -118,7 +118,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="test_stub.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ReliableUDP.Lib\ReliableUDP.Lib.vcxproj">
