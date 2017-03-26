@@ -168,5 +168,5 @@ int SenderSocket::Close()
     Connected = false;
     return STATUS_OK;
   }
-  return FAILED_SEND;
+  return TIMEOUT;
 }
