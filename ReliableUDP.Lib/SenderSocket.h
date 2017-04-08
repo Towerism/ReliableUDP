@@ -5,6 +5,9 @@
 
 #include <cstring>
 #include <windows.h>
+#include <mutex>
+#include "Semaphore.h"
+#include <deque>
 
 #define MAGIC_PORT 22345 // receiver listens on this port
 #define MAX_PKT_SIZE (1500-28) // maximum UDP packet size accepted by receiver 
@@ -26,6 +29,8 @@
 
 #define FORWARD_PATH 0
 #define RETURN_PATH 1
+
+#define MAX_RETX 5
 
 #pragma pack(push, 1)
 struct Flags {
@@ -76,11 +81,28 @@ private:
   SOCKET Socket;
   struct sockaddr_in Remote;
   float Rto = 1.;
+  int sndBase;
+  UINT32 nextSeq;
+  UINT32 sndWindow;
+  UINT32 rcvWindow;
+  std::thread AckThread;
+  std::condition_variable cv;
+  Semaphore FullSlots;
+  Semaphore EmptySlots;
+  std::mutex Mutex;
+  bool KillAckThread = false;
+  std::deque<char*> PacketBuffer;
+  float oldDevRTT = 0, devRTT = 0, oldEstRTT = 0, estRTT = 0, time;
 
   bool RemoteInfoFromHost(const char* host, DWORD port);
   bool SendPacket(char* pkt, size_t pktLength);
   void PrintSynFinAttempt(const char* packetType, DWORD sequence, size_t maximumAttempts, size_t attempt);
-  void PrintSynFinReception(const char* packetType, ReceiverHeader rh);
+  void PrintAckReception(const char* packetType, ReceiverHeader rh);
+  void AckPackets();
+  bool AckIsValid(DWORD ack) const;
+  void StartTimer();
+  void StopTimer();
+  float CalculateRTO(float rtt);
 
   const char* Ip() const { return inet_ntoa(Remote.sin_addr); }
   float Time() const { return static_cast<float>(timeGetTime() - ConstructionTime) / 1000; }

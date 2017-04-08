@@ -7,6 +7,7 @@
 
 #include <ArgumentParser.h>
 #include <SenderSocket.h>
+#include <Checksum.h>
 
 void printUsage()
 {
@@ -78,6 +79,8 @@ int main(int argc, char* argv[])
   auto transferTime = static_cast<float>(timeGetTime() - t) / 1000;
   if ((status = ss.Close()) != STATUS_OK)
     mainError("close failed with status %d\n", status);
-  mainInfo("transfer finished in %.3f sec\n", transferTime);
+  Checksum cs;
+  DWORD check = cs.CRC32((UCHAR*)dwordBuf, dwordBufSize);
+  mainInfo("transfer finished in %.3f sec, %.2f Kbps checksum %x\n", transferTime, 0, check);
   return 0;
 }

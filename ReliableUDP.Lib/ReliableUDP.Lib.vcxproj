@@ -111,11 +111,15 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ArgumentParser.h" />
+    <ClInclude Include="Checksum.h" />
     <ClInclude Include="libraries.h" />
+    <ClInclude Include="Semaphore.h" />
     <ClInclude Include="SenderSocket.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ArgumentParser.cpp" />
+    <ClCompile Include="Checksum.cpp" />
+    <ClCompile Include="Semaphore.cpp" />
     <ClCompile Include="SenderSocket.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
