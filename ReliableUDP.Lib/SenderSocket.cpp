@@ -226,7 +226,7 @@ int SenderSocket::Close(float* transferTime)
     return FAILED_SEND;
   WaitUntilDisconnectedOrAborted();
   *transferTime = transferTimeEnd - transferTimeStart;
-  return STATUS_OK;
+  return status;
 }
 
 void SenderSocket::AckPackets()
