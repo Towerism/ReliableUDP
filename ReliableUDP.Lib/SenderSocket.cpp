@@ -215,7 +215,7 @@ void SenderSocket::WaitUntilDisconnectedOrAborted()
   cv.wait(lock, [&] { return !Connected || status != STATUS_OK; });
 }
 
-int SenderSocket::Close(float& transferTime)
+int SenderSocket::Close(float* transferTime)
 {
   if (!Connected)
     return NOT_CONNECTED;
@@ -225,7 +225,7 @@ int SenderSocket::Close(float& transferTime)
   if (!SendPacket((char*)(&synHeader), sizeof(SenderSynHeader)))
     return FAILED_SEND;
   WaitUntilDisconnectedOrAborted();
-  transferTime = transferTimeEnd - transferTimeStart;
+  *transferTime = transferTimeEnd - transferTimeStart;
   return STATUS_OK;
 }
 

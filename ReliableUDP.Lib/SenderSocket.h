@@ -82,7 +82,7 @@ public:
 
   int Open(const char* host, DWORD port, DWORD senderWindow, LinkProperties* lp);
   int Send(const char* buffer, DWORD bytes);
-  int Close(float& transferTime);
+  int Close(float* transferTime);
 
   float GetEstRTT() const { return estRTT; }
 
