@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
   lp.pLoss[RETURN_PATH] = args.LossReturn;
   if ((status = ss.Open(args.Host, MAGIC_PORT, args.WindowSize, &lp)) != STATUS_OK)
     mainError("connect failed with status %d\n", status);
-  mainInfo("connected to %s in %.3f sec, pkt size %d bytes\n", args.Host, lp.RTT, MAX_PKT_SIZE);
+  mainInfo("connected to %s in %.3f sec, pkt size %d bytes\n", args.Host, ss.GetEstRTT(), MAX_PKT_SIZE);
   auto t = timeGetTime();
   char *charBuf = (char*)dwordBuf; // this buffer goes into socket
   UINT64 byteBufferSize = dwordBufSize << 2; // convert to bytes
@@ -73,8 +73,8 @@ int main(int argc, char* argv[])
     int bytes = min(byteBufferSize - off, MAX_PKT_SIZE - sizeof(SenderDataHeader));
     // send chunk into socket
     if ((status = ss.Send(charBuf + off, bytes)) != STATUS_OK)
-      // error handing: print status and quit
-      off += bytes;
+      mainError("send failed with status %d\n", status);
+    off += bytes;
   }
   auto transferTime = static_cast<float>(timeGetTime() - t) / 1000;
   if ((status = ss.Close()) != STATUS_OK)

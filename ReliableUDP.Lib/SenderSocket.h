@@ -64,6 +64,12 @@ struct ReceiverHeader {
 };
 #pragma pack(pop)
 
+struct PacketBufferElement
+{
+  std::string Packet;
+  size_t PacketLength;
+};
+
 class SenderSocket
 {
 public:
@@ -75,7 +81,10 @@ public:
   int Send(const char* buffer, DWORD bytes);
   int Close();
 
+  float GetEstRTT() const { return estRTT; }
+
 private:
+  std::atomic<int> status = STATUS_OK;
   bool Connected = false;
   DWORD ConstructionTime;
   SOCKET Socket;
@@ -90,19 +99,21 @@ private:
   Semaphore FullSlots;
   Semaphore EmptySlots;
   std::mutex Mutex;
+  int timeouts = 0;
   bool KillAckThread = false;
-  std::deque<char*> PacketBuffer;
+  std::deque<PacketBufferElement> PacketBuffer;
   float oldDevRTT = 0, devRTT = 0, oldEstRTT = 0, estRTT = 0, time;
 
   bool RemoteInfoFromHost(const char* host, DWORD port);
-  bool SendPacket(char* pkt, size_t pktLength);
-  void PrintSynFinAttempt(const char* packetType, DWORD sequence, size_t maximumAttempts, size_t attempt);
+  bool SendPacket(const char* pkt, size_t pktLength, bool bypassSemaphore = false);
+  void PrintSendAttempt(const char* packetType, DWORD sequence, size_t maximumAttempts, size_t attempt);
   void PrintAckReception(const char* packetType, ReceiverHeader rh);
   void AckPackets();
   bool AckIsValid(DWORD ack) const;
   void StartTimer();
   void StopTimer();
   float CalculateRTO(float rtt);
+  void WaitUntilConnectedOrAborted();
 
   const char* Ip() const { return inet_ntoa(Remote.sin_addr); }
   float Time() const { return static_cast<float>(timeGetTime() - ConstructionTime) / 1000; }
