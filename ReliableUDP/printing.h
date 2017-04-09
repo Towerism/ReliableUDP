@@ -7,7 +7,7 @@
 
 inline void PrintDebug(char* format, ...)
 {
-#ifndef _DEBUG
+#if _DEBUG
   va_list args;
   va_start(args, format);
   vprintf(format, args);

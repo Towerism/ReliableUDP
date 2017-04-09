@@ -80,7 +80,7 @@ int main(int argc, char* argv[])
   if ((status = ss.Close()) != STATUS_OK)
     mainError("close failed with status %d\n", status);
   Checksum cs;
-  DWORD check = cs.CRC32((UCHAR*)dwordBuf, dwordBufSize);
-  mainInfo("transfer finished in %.3f sec, %.2f Kbps checksum %x\n", transferTime, 0, check);
+  DWORD check = cs.CRC32((UCHAR*)charBuf, byteBufferSize);
+  mainInfo("transfer finished in %.3f sec, %.2f Kbps checksum %X\n", transferTime, 0, check);
   return 0;
 }

@@ -21,6 +21,7 @@
 #define TIMEOUT 5 // timeout after all retx attempts are exhausted
 #define FAILED_RECV 6 // recvfrom() failed in kernel
 
+#define INVALID_ACK 98 //non-fatal ack error
 #define SELECT_TIMEOUT 99 // non-fatal timeout error 
 
 #define MAGIC_PROTOCOL 0x8311AA
@@ -30,7 +31,7 @@
 #define FORWARD_PATH 0
 #define RETURN_PATH 1
 
-#define MAX_RETX 5
+#define MAX_RETX 30 
 
 #pragma pack(push, 1)
 struct Flags {
@@ -84,7 +85,7 @@ public:
   float GetEstRTT() const { return estRTT; }
 
 private:
-  std::atomic<int> status = STATUS_OK;
+  int status = STATUS_OK;
   bool Connected = false;
   DWORD ConstructionTime;
   SOCKET Socket;
@@ -108,12 +109,14 @@ private:
   bool SendPacket(const char* pkt, size_t pktLength, bool bypassSemaphore = false);
   void PrintSendAttempt(const char* packetType, DWORD sequence, size_t maximumAttempts, size_t attempt);
   void PrintAckReception(const char* packetType, ReceiverHeader rh);
+  void PrintAckReceptionNonDebug(const char* packetType, ReceiverHeader rh);
   void AckPackets();
   bool AckIsValid(DWORD ack) const;
   void StartTimer();
   void StopTimer();
-  float CalculateRTO(float rtt);
+  void RecordRto(float rtt);
   void WaitUntilConnectedOrAborted();
+  void WaitUntilDisconnectedOrAborted();
 
   const char* Ip() const { return inet_ntoa(Remote.sin_addr); }
   float Time() const { return static_cast<float>(timeGetTime() - ConstructionTime) / 1000; }
