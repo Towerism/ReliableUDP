@@ -111,6 +111,8 @@ bool SenderSocket::SendPacket(const char* pkt, size_t pktLength, bool bypassSema
   } else
   {
     PrintSendAttempt("data", sdh->seq, MAX_RETX, timeouts + 1);
+    if (sdh->seq == 0)
+      transferTimeStart = Time();
   }
   if (sendto(Socket, pkt, pktLength, 0, (struct sockaddr*)(&Remote), sizeof(Remote)) == SOCKET_ERROR)
   {
@@ -213,7 +215,7 @@ void SenderSocket::WaitUntilDisconnectedOrAborted()
   cv.wait(lock, [&] { return !Connected || status != STATUS_OK; });
 }
 
-int SenderSocket::Close()
+int SenderSocket::Close(float& transferTime)
 {
   if (!Connected)
     return NOT_CONNECTED;
@@ -223,6 +225,7 @@ int SenderSocket::Close()
   if (!SendPacket((char*)(&synHeader), sizeof(SenderSynHeader)))
     return FAILED_SEND;
   WaitUntilDisconnectedOrAborted();
+  transferTime = transferTimeEnd - transferTimeStart;
   return STATUS_OK;
 }
 
@@ -300,6 +303,7 @@ void SenderSocket::AckPackets()
           KillAckThread = true;
         } else {
           PrintAckReception("ACK", rh);
+          transferTimeEnd = Time();
           PrintDebug("\n");
         }
         StopTimer();

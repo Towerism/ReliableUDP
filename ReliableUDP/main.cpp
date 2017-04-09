@@ -76,11 +76,17 @@ int main(int argc, char* argv[])
       mainError("send failed with status %d\n", status);
     off += bytes;
   }
-  auto transferTime = static_cast<float>(timeGetTime() - t) / 1000;
-  if ((status = ss.Close()) != STATUS_OK)
+  float transferTime;
+  if ((status = ss.Close(transferTime)) != STATUS_OK)
     mainError("close failed with status %d\n", status);
   Checksum cs;
   DWORD check = cs.CRC32((UCHAR*)charBuf, byteBufferSize);
-  mainInfo("transfer finished in %.3f sec, %.2f Kbps checksum %X\n", transferTime, 0, check);
+  auto bitsTransferred = static_cast<float>(byteBufferSize * BITS_IN_BYTE);
+  auto transferRate = bitsTransferred / transferTime / BITS_IN_KILOBIT;
+  mainInfo("transfer finished in %.3f sec, %.2f Kbps checksum %X\n", transferTime, transferRate, check);
+  auto packetsSent = static_cast<float>(90);//ceil(static_cast<float>(byteBufferSize) / static_cast<float>(MAX_PKT_SIZE)) 
+  mainInfo("packets sent %d\n", ceil(static_cast<float>(byteBufferSize) / static_cast<float>(MAX_PKT_SIZE)));
+  auto idealRate = bitsTransferred / packetsSent / static_cast<float>(ss.GetEstRTT()) / BITS_IN_KILOBIT;
+  mainInfo("estRTT %.3f, ideal rate %.2f Kbps\n", ss.GetEstRTT(), idealRate);
   return 0;
 }

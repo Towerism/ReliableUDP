@@ -27,6 +27,8 @@
 #define MAGIC_PROTOCOL 0x8311AA
 
 #define BITS_IN_MEGABIT 1e6
+#define BITS_IN_KILOBIT 1000
+#define BITS_IN_BYTE 8
 
 #define FORWARD_PATH 0
 #define RETURN_PATH 1
@@ -80,11 +82,13 @@ public:
 
   int Open(const char* host, DWORD port, DWORD senderWindow, LinkProperties* lp);
   int Send(const char* buffer, DWORD bytes);
-  int Close();
+  int Close(float& transferTime);
 
   float GetEstRTT() const { return estRTT; }
 
 private:
+  float transferTimeStart;
+  float transferTimeEnd;
   int status = STATUS_OK;
   bool Connected = false;
   DWORD ConstructionTime;
