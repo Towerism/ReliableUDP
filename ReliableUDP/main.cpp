@@ -57,10 +57,10 @@ int main(int argc, char* argv[])
   SenderSocket ss; // instance of your class
   int status;
   LinkProperties lp;
-  lp.RTT = args.RTT;
-  lp.speed = BITS_IN_MEGABIT * args.BandwidthBottleneck;
-  lp.pLoss[FORWARD_PATH] = args.LossForward;
-  lp.pLoss[RETURN_PATH] = args.LossReturn;
+  lp.Rtt = args.RTT;
+  lp.Speed = BITS_IN_MEGABIT * args.BandwidthBottleneck;
+  lp.LossProbability[FORWARD_PATH] = args.LossForward;
+  lp.LossProbability[RETURN_PATH] = args.LossReturn;
   if ((status = ss.Open(args.Host, MAGIC_PORT, args.WindowSize, &lp)) != STATUS_OK)
     mainError("connect failed with status %d\n", status);
   mainInfo("connected to %s in %.3f sec, pkt size %d bytes\n", args.Host, ss.GetEstRTT(), MAX_PKT_SIZE);

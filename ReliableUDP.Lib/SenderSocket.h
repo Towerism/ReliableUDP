@@ -38,33 +38,33 @@
 
 #pragma pack(push, 1)
 struct Flags {
-  DWORD reserved : 5; // must be zero
-  DWORD SYN : 1;
-  DWORD ACK : 1;
-  DWORD FIN : 1;
-  DWORD magic : 24;
-  Flags() { memset(this, 0, sizeof(*this)); magic = MAGIC_PROTOCOL; }
+  DWORD Reserved : 5; // must be zero
+  DWORD Syn : 1;
+  DWORD Ack : 1;
+  DWORD Fin : 1;
+  DWORD Magic : 24;
+  Flags() { memset(this, 0, sizeof(*this)); Magic = MAGIC_PROTOCOL; }
 };
 struct SenderDataHeader {
-  Flags flags;
-  DWORD seq; // must begin from 0
+  Flags Flags;
+  DWORD Sequence; // must begin from 0
 };
 struct LinkProperties {
   // transfer parameters
-  float RTT; // propagation RTT (in sec)
-  float speed; // bottleneck bandwidth (in bits/sec)
-  float pLoss[2]; // probability of loss in each direction
-  DWORD bufferSize; // buffer size of emulated routers (in packets)
+  float Rtt; // propagation Rtt (in sec)
+  float Speed; // bottleneck bandwidth (in bits/sec)
+  float LossProbability[2]; // probability of loss in each direction
+  DWORD BufferSize; // buffer size of emulated routers (in packets)
   LinkProperties() { memset(this, 0, sizeof(*this)); }
 };
 struct SenderSynHeader {
-  SenderDataHeader sdh;
-  LinkProperties lp;
+  SenderDataHeader SenderDataHeader;
+  LinkProperties LinkProperties;
 };
 struct ReceiverHeader {
-  Flags flags;
-  DWORD recvWnd; // receiver window for flow control (in pkts)
-  DWORD ackSeq; // ack value = next expected sequence
+  Flags Flags;
+  DWORD ReceiverWindow; // receiver window for flow control (in pkts)
+  DWORD AckSequence; // ack value = next expected sequence
 };
 #pragma pack(pop)
 
@@ -85,33 +85,33 @@ public:
   int Send(const char* buffer, DWORD bytes);
   int Close(float* transferTime);
 
-  float GetEstRTT() const { return estRTT; }
+  float GetEstRTT() const { return EstimatedRtt; }
 
 private:
-  std::atomic<float> transferTimeStart, transferTimeEnd;
-  int status = STATUS_OK;
+  std::atomic<float> TransferTimeStart, TransferTimeEnd;
+  int Status = STATUS_OK;
   std::atomic<bool> Connected = false;
   DWORD ConstructionTime;
   SOCKET Socket;
   struct sockaddr_in Remote;
   float Rto = 1.;
-  std::atomic<int> sndBase;
+  std::atomic<int> SenderBase;
   std::atomic<size_t> BytesAcked = 0;
-  std::atomic<UINT32> nextSeq;
-  UINT32 sndWindow;
-  UINT32 rcvWindow;
+  std::atomic<UINT32> NextSequence;
+  UINT32 SenderWindow;
+  UINT32 ReceiverWindow;
   std::thread AckThread;
   std::thread StatsThread;
-  std::condition_variable cv;
+  std::condition_variable Condition;
   Semaphore FullSlots;
   Semaphore EmptySlots;
   std::mutex Mutex;
-  int timeouts = 0;
+  int Timeouts = 0;
   std::atomic<size_t> TotalTimeouts = 0;
   std::atomic<UINT32> EffectiveWindow;
   bool KillAckThread = false;
   std::deque<PacketBufferElement> PacketBuffer;
-  std::atomic<float> oldDevRTT = 0, devRTT = 0, oldEstRTT = 0, estRTT = 0, time;
+  std::atomic<float> OldRttDeviation = 0, RttDeviation = 0, OldEstimatedRtt = 0, EstimatedRtt = 0, TimeMark;
 
   bool RemoteInfoFromHost(const char* host, DWORD port);
   bool SendPacket(const char* pkt, size_t pktLength, bool bypassSemaphore = false);
