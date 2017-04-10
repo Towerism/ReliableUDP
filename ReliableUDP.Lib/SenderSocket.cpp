@@ -324,7 +324,7 @@ void SenderSocket::AckPackets()
   }
 }
 
-void SenderSocket::PrintStats()
+void SenderSocket::PrintStats() const
 {
   const UINT64 interval = 2;
   UINT64 seconds = interval;

@@ -119,7 +119,7 @@ private:
   void PrintAckReception(const char* packetType, ReceiverHeader rh);
   void PrintAckReceptionNonDebug(const char* packetType, ReceiverHeader rh);
   void AckPackets();
-  void PrintStats();
+  void PrintStats() const;
   bool AckIsValid(DWORD ack, bool isFin) const;
   void StartTimer();
   void StopTimer();
