@@ -11,7 +11,7 @@
 #define ALPHA 0.125
 
 SenderSocket::SenderSocket() 
-  : ConstructionTime(timeGetTime()), sndBase(-1), nextSeq(0), sndWindow(1), FullSlots(0), EmptySlots(1)
+  : ConstructionTime(timeGetTime()), sndBase(-1), nextSeq(0), sndWindow(1), FullSlots(0), EmptySlots(1), EffectiveWindow(1)
 {
   WSADATA wsaData;
   WORD wVersionRequested = MAKEWORD(2, 2);
@@ -42,6 +42,7 @@ SenderSocket::SenderSocket()
 SenderSocket::~SenderSocket()
 {
   AckThread.join();
+  StatsThread.join();
   WSACleanup();
 }
 
@@ -64,9 +65,9 @@ void SenderSocket::RecordRto(float rtt)
 {
   estRTT = (1 - ALPHA) * oldEstRTT + ALPHA * rtt;
   devRTT = (1 - BETA) * oldDevRTT + BETA * abs(rtt - estRTT);
-  Rto = estRTT + 4 * max(devRTT, 0.010);
-  oldEstRTT = estRTT;
-  oldDevRTT = devRTT;
+  Rto = estRTT + 4 * max(devRTT.load(), 0.010);
+  oldEstRTT.store(estRTT.load());
+  oldDevRTT.store(devRTT.load());
 }
 
 int SenderSocket::Open(const char* host, DWORD port, DWORD senderWindow, LinkProperties* lp)
@@ -75,7 +76,7 @@ int SenderSocket::Open(const char* host, DWORD port, DWORD senderWindow, LinkPro
     return ALREADY_CONNECTED;
   if (!RemoteInfoFromHost(host, port))
     return INVALID_NAME;
-  sndWindow = senderWindow;
+  sndWindow = 1;
   SenderSynHeader synHeader;
   synHeader.lp = *lp;
   synHeader.lp.bufferSize = senderWindow + MAX_RETX;
@@ -84,6 +85,7 @@ int SenderSocket::Open(const char* host, DWORD port, DWORD senderWindow, LinkPro
   if (!SendPacket((char*)(&synHeader), sizeof(SenderSynHeader)))
     return FAILED_SEND;
   WaitUntilConnectedOrAborted();
+  StatsThread = std::thread(&SenderSocket::PrintStats, this);
   return status;
 }
 
@@ -97,7 +99,7 @@ bool SenderSocket::SendPacket(const char* pkt, size_t pktLength, bool bypassSema
     return false;
   PrintDebug("[%6.3f] --> ", Time());
   SenderDataHeader* sdh = (SenderDataHeader*)pkt;
-  sdh->seq = max(0, sndBase);
+  sdh->seq = max(0, sndBase.load());
   if (sdh->flags.FIN)
   {
     sndBase -= 1;
@@ -253,6 +255,7 @@ void SenderSocket::AckPackets()
             continue;
           }
           ++timeouts;
+          ++TotalTimeouts;
           PacketBuffer.pop_front();
           lock.unlock();
           lock.release();
@@ -260,6 +263,7 @@ void SenderSocket::AckPackets()
         }
       } else if (receiveResult != STATUS_OK) {
         status = receiveResult;
+        Connected = false;
         cv.notify_one();
         EmptySlots.Signal();
         return;
@@ -267,6 +271,7 @@ void SenderSocket::AckPackets()
       if (timeouts >= MAX_RETX - 1)
       {
         status = receiveResult;
+        Connected = false;
         cv.notify_one();
         EmptySlots.Signal();
         return;
@@ -277,14 +282,15 @@ void SenderSocket::AckPackets()
         lock.release();
       }
     } while (receiveResult != STATUS_OK);
+    BytesAcked += PacketBuffer.front().PacketLength - sizeof(SenderDataHeader);
     timeouts = 0;
     if (static_cast<int>(rh.ackSeq) > sndBase) {
       FullSlots.Wait();
       std::unique_lock<std::mutex> lock(Mutex);
       ++nextSeq;
       sndBase = rh.ackSeq;
-      auto effectiveWindow = min(sndWindow, rh.recvWnd);
-      auto newReleased = sndBase + effectiveWindow + lastReleased;
+      EffectiveWindow = min(sndWindow, rh.recvWnd);
+      auto newReleased = sndBase + EffectiveWindow + lastReleased;
       PrintDebug("[%6.3f] <-- ", Time());
       if (rh.flags.SYN) {
         PrintAckReception("SYN-ACK", rh);
@@ -314,5 +320,22 @@ void SenderSocket::AckPackets()
       EmptySlots.Signal();
       lastReleased += newReleased;
     }
+  }
+}
+
+void SenderSocket::PrintStats()
+{
+  const UINT64 interval = 2;
+  UINT64 seconds = interval;
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(interval));
+    if (!Connected)
+      break;
+    auto megabytesAcked = static_cast<float>(BytesAcked.load()) / BYTES_IN_MEGABYTE;
+    auto megabitsAcked = megabytesAcked * BITS_IN_BYTE;
+    auto elapsedTime = Time() - transferTimeStart;
+    auto rate = megabitsAcked / elapsedTime;
+    printf("[%2llu] B %6d (%5.1f MB) N %6d T %zu F %d W %d S %.3f Mbps RTT %.3f\n", seconds, sndBase.load(), megabytesAcked, nextSeq.load(), TotalTimeouts.load(), 0, EffectiveWindow.load(), rate, estRTT.load());
+    seconds += interval;
   }
 }

@@ -28,6 +28,7 @@
 
 #define BITS_IN_MEGABIT 1e6
 #define BITS_IN_KILOBIT 1000
+#define BYTES_IN_MEGABYTE (1 << 20)
 #define BITS_IN_BYTE 8
 
 #define FORWARD_PATH 0
@@ -87,27 +88,30 @@ public:
   float GetEstRTT() const { return estRTT; }
 
 private:
-  float transferTimeStart;
-  float transferTimeEnd;
+  std::atomic<float> transferTimeStart, transferTimeEnd;
   int status = STATUS_OK;
-  bool Connected = false;
+  std::atomic<bool> Connected = false;
   DWORD ConstructionTime;
   SOCKET Socket;
   struct sockaddr_in Remote;
   float Rto = 1.;
-  int sndBase;
-  UINT32 nextSeq;
+  std::atomic<int> sndBase;
+  std::atomic<size_t> BytesAcked = 0;
+  std::atomic<UINT32> nextSeq;
   UINT32 sndWindow;
   UINT32 rcvWindow;
   std::thread AckThread;
+  std::thread StatsThread;
   std::condition_variable cv;
   Semaphore FullSlots;
   Semaphore EmptySlots;
   std::mutex Mutex;
   int timeouts = 0;
+  std::atomic<size_t> TotalTimeouts = 0;
+  std::atomic<UINT32> EffectiveWindow;
   bool KillAckThread = false;
   std::deque<PacketBufferElement> PacketBuffer;
-  float oldDevRTT = 0, devRTT = 0, oldEstRTT = 0, estRTT = 0, time;
+  std::atomic<float> oldDevRTT = 0, devRTT = 0, oldEstRTT = 0, estRTT = 0, time;
 
   bool RemoteInfoFromHost(const char* host, DWORD port);
   bool SendPacket(const char* pkt, size_t pktLength, bool bypassSemaphore = false);
@@ -115,6 +119,7 @@ private:
   void PrintAckReception(const char* packetType, ReceiverHeader rh);
   void PrintAckReceptionNonDebug(const char* packetType, ReceiverHeader rh);
   void AckPackets();
+  void PrintStats();
   bool AckIsValid(DWORD ack) const;
   void StartTimer();
   void StopTimer();
