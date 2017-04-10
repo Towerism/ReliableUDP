@@ -30,6 +30,9 @@
     <ClInclude Include="Semaphore.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="printing.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SenderSocket.cpp">
@@ -42,6 +45,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Semaphore.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="printing.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

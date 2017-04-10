@@ -113,12 +113,14 @@
     <ClInclude Include="ArgumentParser.h" />
     <ClInclude Include="Checksum.h" />
     <ClInclude Include="libraries.h" />
+    <ClInclude Include="printing.h" />
     <ClInclude Include="Semaphore.h" />
     <ClInclude Include="SenderSocket.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ArgumentParser.cpp" />
     <ClCompile Include="Checksum.cpp" />
+    <ClCompile Include="printing.cpp" />
     <ClCompile Include="Semaphore.cpp" />
     <ClCompile Include="SenderSocket.cpp" />
   </ItemGroup>

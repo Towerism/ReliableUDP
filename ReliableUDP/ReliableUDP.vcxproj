@@ -133,9 +133,6 @@
       <Project>{f02256bd-5ec1-4f83-9dab-0c1f8272ce94}</Project>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="printing.h" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -1,11 +1,13 @@
-﻿// File: printing.h
+// File: printing.cpp
 // Martin Fracker
 // CSCE 463-500 Spring 2017
+
+#include "printing.h"
 
 #include <cstdarg>
 #include <cstdio>
 
-inline void PrintDebug(char* format, ...)
+void PrintDebug(char* format, ...)
 {
 #if _DEBUG
   va_list args;
