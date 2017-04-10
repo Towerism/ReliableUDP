@@ -120,7 +120,7 @@ private:
   void PrintAckReceptionNonDebug(const char* packetType, ReceiverHeader rh);
   void AckPackets();
   void PrintStats();
-  bool AckIsValid(DWORD ack) const;
+  bool AckIsValid(DWORD ack, bool isFin) const;
   void StartTimer();
   void StopTimer();
   void RecordRto(float rtt);

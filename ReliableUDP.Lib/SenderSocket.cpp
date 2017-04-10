@@ -46,8 +46,12 @@ SenderSocket::~SenderSocket()
   WSACleanup();
 }
 
-bool SenderSocket::AckIsValid(DWORD ack) const
+bool SenderSocket::AckIsValid(DWORD ack, bool isFin) const
 {
+  if (isFin)
+  {
+    ack += 1;
+  }
   return static_cast<int>(ack) > sndBase && ack <= nextSeq;
 }
 
@@ -102,10 +106,6 @@ bool SenderSocket::SendPacket(const char* pkt, size_t pktLength, bool bypassSema
   sdh->seq = max(0, sndBase.load());
   if (sdh->flags.FIN)
   {
-    sndBase -= 1;
-#ifndef _DEBUG
-  PrintDebug("[%6.3f] --> ", Time());
-#endif
     PrintSendAttempt("FIN", sdh->seq, MAX_RETX, timeouts + 1);
   } else if (sdh->flags.SYN)
   {
@@ -147,7 +147,8 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
       printf("failed recvfrom with %d\n", WSAGetLastError());
       return FAILED_RECV;
     }
-    if (AckIsValid(((ReceiverHeader*)packet)->ackSeq))
+    ReceiverHeader* rh = (ReceiverHeader*)packet;
+    if (AckIsValid(rh->ackSeq, rh->flags.FIN))
       return STATUS_OK;
     else
       return INVALID_ACK;
@@ -249,11 +250,8 @@ void SenderSocket::AckPackets()
           PacketBufferElement bufferElem;
           if (PacketBuffer.size() > 0)
             bufferElem = PacketBuffer.front();
-          else {
-            lock.unlock();
-            lock.release();
+          else
             continue;
-          }
           ++timeouts;
           ++TotalTimeouts;
           PacketBuffer.pop_front();
@@ -284,7 +282,7 @@ void SenderSocket::AckPackets()
     } while (receiveResult != STATUS_OK);
     BytesAcked += PacketBuffer.front().PacketLength - sizeof(SenderDataHeader);
     timeouts = 0;
-    if (static_cast<int>(rh.ackSeq) > sndBase) {
+    if (AckIsValid(rh.ackSeq, rh.flags.FIN)) {
       FullSlots.Wait();
       std::unique_lock<std::mutex> lock(Mutex);
       ++nextSeq;
@@ -302,6 +300,9 @@ void SenderSocket::AckPackets()
       } else
       { 
         if (rh.flags.FIN) {
+#ifndef _DEBUG
+  printf("[%6.3f] <-- ", Time());
+#endif
           PrintAckReceptionNonDebug("FIN-ACK", rh);
           printf("\n");
           Connected = false;
