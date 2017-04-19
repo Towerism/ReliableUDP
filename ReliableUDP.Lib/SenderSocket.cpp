@@ -6,12 +6,13 @@
 #include <cstdio>
 #include <string>
 #include "printing.h"
+#include <algorithm>
 
 #define BETA 0.25
 #define ALPHA 0.125
 
 SenderSocket::SenderSocket() 
-  : ConstructionTime(timeGetTime()), SenderBase(-1), NextSequence(0), SenderWindow(1), FullSlots(0), EmptySlots(1), EffectiveWindow(1)
+  : ConstructionTime(timeGetTime()), SenderBase(-1), NextSequence(0), SenderWindow(1), EmptySlots(1), EffectiveWindow(1), PacketBuffer(1), FullSlots(0)
 {
   WSADATA wsaData;
   WORD wVersionRequested = MAKEWORD(2, 2);
@@ -34,7 +35,23 @@ SenderSocket::SenderSocket()
     std::exit(EXIT_FAILURE);
   }
   // ensure non-blocking mode is off
-  ioctlsocket(Socket, FIONBIO, nullptr);
+  int kernelBuffer = 2000000; //2 meg
+  if (setsockopt(Socket, SOL_SOCKET, SO_RCVBUF, (const char*)&kernelBuffer, sizeof(int)) == SOCKET_ERROR) {
+    printf("setsockopt() generated error %d\n", WSAGetLastError());
+    std::exit(EXIT_FAILURE);
+  }
+  kernelBuffer = 20000000; //20 meg
+  if (setsockopt(Socket, SOL_SOCKET, SO_SNDBUF, (const char*)&kernelBuffer, sizeof(int)) == SOCKET_ERROR) {
+    printf("setsockopt() generated error %d\n", WSAGetLastError());
+    std::exit(EXIT_FAILURE);
+  }
+
+  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+  u_long imode = 1;
+  if (ioctlsocket(Socket, FIONBIO, &imode) == SOCKET_ERROR) {
+    printf("ioctlsocket() generated error %d\n", WSAGetLastError());
+    std::exit(EXIT_FAILURE);
+  }
   // start ack thread
   AckThread = std::thread(&SenderSocket::AckPackets, this);
 }
@@ -57,12 +74,11 @@ bool SenderSocket::AckIsValid(DWORD ack, bool isFin) const
 
 void SenderSocket::StartTimer()
 {
+  auto index = SenderBase.load();
+  if (index == -1)
+    index = 0;
   TimeMark = Time();
-}
-
-void SenderSocket::StopTimer()
-{
-  EstimatedRtt = Time() - TimeMark;
+  Timeout = PacketBuffer[index % SenderWindow].TimeStamp + Rto;
 }
 
 void SenderSocket::RecordRto(float rtt)
@@ -80,33 +96,39 @@ int SenderSocket::Open(const char* host, DWORD port, DWORD senderWindow, LinkPro
     return ALREADY_CONNECTED;
   if (!RemoteInfoFromHost(host, port))
     return INVALID_NAME;
-  SenderWindow = 1;
+  auto win = senderWindow;
+  SenderWindow = win;
   SenderSynHeader synHeader;
   synHeader.LinkProperties = *lp;
   synHeader.LinkProperties.BufferSize = senderWindow + MAX_RETX;
   synHeader.SenderDataHeader.Flags.Syn = 1;
   synHeader.SenderDataHeader.Sequence = 0;
+  StartTimer();
   if (!SendPacket((char*)(&synHeader), sizeof(SenderSynHeader)))
     return FAILED_SEND;
   WaitUntilConnectedOrAborted();
+  NextSequence = 0;
+  Rto = min(1, 2 * EstimatedRtt);
+  PacketBuffer = std::vector<PacketBufferElement>(SenderWindow);
   StatsThread = std::thread(&SenderSocket::PrintStats, this);
   return Status;
 }
 
-bool SenderSocket::SendPacket(const char* pkt, size_t pktLength, bool bypassSemaphore)
+bool SenderSocket::SendPacket(const char* pkt, size_t pktLength, bool bypassSemaphore, int sequenceOverride)
 {
   if (!bypassSemaphore)
     EmptySlots.Wait();
   std::unique_lock<std::mutex> lock(Mutex); // will guarantee unlock upon destruction
-  StartTimer();
   if (Status != STATUS_OK)
     return false;
-  PrintDebug("[%6.3f] --> ", Time());
   SenderDataHeader* sdh = (SenderDataHeader*)pkt;
-  sdh->Sequence = max(0, SenderBase.load());
+  sdh->Sequence = (sequenceOverride >= 0) ? sequenceOverride : CurrentSequence.load();
+  StartTimer();
+  PrintDebug("[%6.3f] --> ", Time());
   if (sdh->Flags.Fin)
   {
     PrintSendAttempt("FIN", sdh->Sequence, MAX_RETX, Timeouts + 1);
+    FinSent = true;
   } else if (sdh->Flags.Syn)
   {
     PrintSendAttempt("SYN", sdh->Sequence, MAX_RETX, Timeouts + 1);
@@ -116,19 +138,41 @@ bool SenderSocket::SendPacket(const char* pkt, size_t pktLength, bool bypassSema
     if (sdh->Sequence == 0)
       TransferTimeStart = Time();
   }
-  if (sendto(Socket, pkt, pktLength, 0, (struct sockaddr*)(&Remote), sizeof(Remote)) == SOCKET_ERROR)
+  while(sendto(Socket, pkt, pktLength, 0, (struct sockaddr*)(&Remote), sizeof(Remote)) == SOCKET_ERROR)
   {
-    printf("failed sendto with %d\n", WSAGetLastError());
-    Status = FAILED_SEND;
-    return false;
+    auto error = WSAGetLastError();
+    if (error == WSAEWOULDBLOCK)
+    {
+      fd_set fds;
+      FD_ZERO(&fds);
+      FD_SET(Socket, &fds);
+      if (select(Socket, &fds, nullptr, nullptr, nullptr) == SOCKET_ERROR)
+      {
+        printf("failed select with error %d\n", error);
+        Status = FAILED_SEND;
+        return false;
+      }
+    } else
+    {
+      printf("failed sendto with error %d\n", error);
+      Status = FAILED_SEND;
+      return false;
+    }
   }
-  PacketBuffer.push_back({ std::string(pkt, pktLength), pktLength });
+  PacketBuffer[sdh->Sequence % SenderWindow] = { std::string(pkt, pktLength), pktLength, Time() };
   lock.unlock();
   if (!bypassSemaphore)
     FullSlots.Signal();
   Status = STATUS_OK;
   return true;
 }
+
+float SenderSocket::CalculateTimeout()
+{
+  Timeout = GetTimeStamp(SenderBase) + Rto;
+  return Timeout;
+}
+
 
 int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTimestamp = false)
 {
@@ -140,19 +184,36 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
   FD_ZERO(&readers);
   FD_SET(Socket, &readers);
   struct timeval timeout;
-  timeout.tv_sec = Rto;
-  timeout.tv_usec = (Rto - timeout.tv_sec) * 1000000;
-  if (select(Socket, &readers, nullptr, nullptr, &timeout) > 0u) {
+  auto index = SenderBase.load();
+  if (index == -1)
+    index = 0;
+  Timeout = PacketBuffer[index % SenderWindow].TimeStamp + Rto;
+  auto remainder = Timeout - Time();
+  timeout.tv_sec = remainder;
+  timeout.tv_usec = (remainder - timeout.tv_sec) * 1000000;
+  int err;
+  while ((err = select(Socket, &readers, nullptr, nullptr, &timeout)) > 0u) {
     if ((recvfrom(Socket, packet, packetLength, 0, (struct sockaddr*)(&senderAddr), &senderAddrSize)) == SOCKET_ERROR) {
       printf("failed recvfrom with %d\n", WSAGetLastError());
       return FAILED_RECV;
     }
     ReceiverHeader* rh = (ReceiverHeader*)packet;
-    if (AckIsValid(rh->AckSequence, rh->Flags.Fin))
+    if (AckIsValid(rh->AckSequence, rh->Flags.Fin)) {
+      EstimatedRtt = Time() - GetTimeStamp(rh->AckSequence - 1);
+      RecordRto(EstimatedRtt);
       return STATUS_OK;
-    else
-      return INVALID_ACK;
+    }
+    if (!FinSent)
+      remainder = CalculateTimeout() - Time();
+      timeout.tv_sec = remainder;
+      timeout.tv_usec = (remainder - timeout.tv_sec) * 1000000;
   }
+  if (err == SOCKET_ERROR)
+  {
+    printf("failed select with error %d\n", err);
+    std::exit(EXIT_FAILURE);
+  }
+  StartTimer();
   return TIMEOUT;
 }
 
@@ -203,6 +264,8 @@ int SenderSocket::Send(const char* buffer, DWORD bytes) {
   memcpy(pkt + sizeof(SenderDataHeader), buffer, bytes);
   memcpy(pkt, &senderHeader, sizeof(SenderDataHeader));
   SendPacket(pkt, bytes + sizeof(SenderDataHeader));
+  ++CurrentSequence;
+  NextSequence = CurrentSequence.load();
   return Status;
 }
 
@@ -216,6 +279,14 @@ void SenderSocket::WaitUntilDisconnectedOrAborted()
 {
   std::unique_lock<std::mutex> lock(Mutex);
   Condition.wait(lock, [&] { return !Connected || Status != STATUS_OK; });
+}
+
+float SenderSocket::GetTimeStamp(int sequence)
+{
+  auto index = SenderBase.load();
+  if (index == -1)
+    index = 0;
+  return PacketBuffer[index % SenderWindow].TimeStamp;
 }
 
 int SenderSocket::Close(float* transferTime)
@@ -234,12 +305,13 @@ int SenderSocket::Close(float* transferTime)
 
 void SenderSocket::AckPackets()
 {
+  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
   ReceiverHeader rh;
   auto lastReleased = 0;
   int receiveResult;
   while (!KillAckThread) {
-    FullSlots.Wait();
     do {
+      FullSlots.Wait();
       receiveResult = ReceivePacket((char*)(&rh), sizeof(rh), true);
       if (receiveResult == INVALID_ACK)
         continue;
@@ -248,16 +320,21 @@ void SenderSocket::AckPackets()
       {
         {
           PacketBufferElement bufferElem;
+          auto index = SenderBase.load();
+          if (index == -1)
+            index = 0;
           if (PacketBuffer.size() > 0)
-            bufferElem = PacketBuffer.front();
+            bufferElem = PacketBuffer[index % SenderWindow];
           else
             continue;
           ++Timeouts;
           ++TotalTimeouts;
-          PacketBuffer.pop_front();
+          SenderDataHeader* sdh = (SenderDataHeader*)bufferElem.Packet.data();
+          auto sequence = sdh->Sequence;
+          FullSlots.UnWait();
           lock.unlock();
           lock.release();
-          SendPacket(bufferElem.Packet.c_str(), bufferElem.PacketLength, true);
+          SendPacket(bufferElem.Packet.c_str(), bufferElem.PacketLength, true, sequence);
         }
       } else if (receiveResult != STATUS_OK) {
         Status = receiveResult;
@@ -274,26 +351,26 @@ void SenderSocket::AckPackets()
         EmptySlots.Signal();
         return;
       }
-      FullSlots.Signal();
       if (receiveResult != TIMEOUT) {
         lock.unlock();
         lock.release();
       }
     } while (receiveResult != STATUS_OK);
-    BytesAcked += PacketBuffer.front().PacketLength - sizeof(SenderDataHeader);
-    Timeouts = 0;
     if (AckIsValid(rh.AckSequence, rh.Flags.Fin)) {
-      FullSlots.Wait();
+      Timeouts = 0;
       std::unique_lock<std::mutex> lock(Mutex);
+      auto base = max((int)SenderBase, 0);
+      BytesAcked += PacketBuffer[base % SenderWindow].PacketLength - sizeof(SenderDataHeader);
       ++NextSequence;
+      FullSlots.WaitDeferred(rh.AckSequence - SenderBase);
       SenderBase = rh.AckSequence;
       EffectiveWindow = min(SenderWindow, rh.ReceiverWindow);
-      auto newReleased = SenderBase + EffectiveWindow + lastReleased;
+      auto newReleased = SenderBase + EffectiveWindow - lastReleased;
       PrintDebug("[%6.3f] <-- ", Time());
       if (rh.Flags.Syn) {
         PrintAckReception("SYN-ACK", rh);
-        StopTimer();
-        Rto = min(1, 2 * EstimatedRtt);
+        EstimatedRtt = Time() - TimeMark;
+        Rto = 2 * EstimatedRtt;
         PrintDebug("; setting initial RTO to %.3f\n", Rto);
         Connected = true;
         Condition.notify_one();
@@ -313,12 +390,9 @@ void SenderSocket::AckPackets()
           TransferTimeEnd = Time();
           PrintDebug("\n");
         }
-        StopTimer();
-        RecordRto(EstimatedRtt);
       }
-      PacketBuffer.pop_front();
       lock.unlock();
-      EmptySlots.Signal();
+      EmptySlots.Signal(newReleased);
       lastReleased += newReleased;
     }
   }

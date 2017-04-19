@@ -11,10 +11,24 @@ void Semaphore::Wait()
   --resources;
 }
 
-void Semaphore::Signal()
+void Semaphore::WaitDeferred(int consumed)
+{
+  std::unique_lock<std::mutex> cv_lock(cv_mtx);
+  if (resources < consumed - 1)
+    return;
+  resources -= consumed - 1;
+}
+
+void Semaphore::Signal(int resourcesReleased)
+{
+  std::unique_lock<std::mutex> cv_lock(cv_mtx);
+  resources += resourcesReleased;
+  cv.notify_all();
+}
+
+void Semaphore::UnWait()
 {
   std::unique_lock<std::mutex> cv_lock(cv_mtx);
   ++resources;
-  cv.notify_all();
 }
 

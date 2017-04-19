@@ -6,8 +6,8 @@
 #include <cstring>
 #include <windows.h>
 #include <mutex>
+#include <vector>
 #include "Semaphore.h"
-#include <deque>
 
 #define MAGIC_PORT 22345 // receiver listens on this port
 #define MAX_PKT_SIZE (1500-28) // maximum UDP packet size accepted by receiver 
@@ -21,6 +21,7 @@
 #define TIMEOUT 5 // timeout after all retx attempts are exhausted
 #define FAILED_RECV 6 // recvfrom() failed in kernel
 
+#define FAST_RETX 97 // non-fatal timeout error 
 #define INVALID_ACK 98 //non-fatal ack error
 #define SELECT_TIMEOUT 99 // non-fatal timeout error 
 
@@ -34,7 +35,7 @@
 #define FORWARD_PATH 0
 #define RETURN_PATH 1
 
-#define MAX_RETX 30 
+#define MAX_RETX 50 
 
 #pragma pack(push, 1)
 struct Flags {
@@ -72,6 +73,7 @@ struct PacketBufferElement
 {
   std::string Packet;
   size_t PacketLength;
+  float TimeStamp;
 };
 
 class SenderSocket
@@ -94,27 +96,36 @@ private:
   DWORD ConstructionTime;
   SOCKET Socket;
   struct sockaddr_in Remote;
+  int dupack = 0;
   float Rto = 1.;
   std::atomic<int> SenderBase;
   std::atomic<size_t> BytesAcked = 0;
   std::atomic<UINT32> NextSequence;
+  std::atomic<UINT32> CurrentSequence = 0;
   UINT32 SenderWindow;
   UINT32 ReceiverWindow;
   std::thread AckThread;
   std::thread StatsThread;
   std::condition_variable Condition;
+  std::condition_variable FullSlotsCondition;
+  std::mutex FullSlotsMutex;
+  bool FinSent = false;
+  std::atomic<size_t> FastRetransmissions = 0;
   Semaphore FullSlots;
   Semaphore EmptySlots;
+  std::atomic<bool> WindowMovedForwardSinceLastSend = true;
+  float CalculateTimeout();
   std::mutex Mutex;
   int Timeouts = 0;
   std::atomic<size_t> TotalTimeouts = 0;
   std::atomic<UINT32> EffectiveWindow;
   bool KillAckThread = false;
-  std::deque<PacketBufferElement> PacketBuffer;
+  std::vector<PacketBufferElement> PacketBuffer;
   std::atomic<float> OldRttDeviation = 0, RttDeviation = 0, OldEstimatedRtt = 0, EstimatedRtt = 0, TimeMark;
+  float Timeout = 1;
 
   bool RemoteInfoFromHost(const char* host, DWORD port);
-  bool SendPacket(const char* pkt, size_t pktLength, bool bypassSemaphore = false);
+  bool SendPacket(const char* pkt, size_t pktLength, bool bypassSemaphore = false, int sequenceOverride = -1);
   void PrintSendAttempt(const char* packetType, DWORD sequence, size_t maximumAttempts, size_t attempt);
   void PrintAckReception(const char* packetType, ReceiverHeader rh);
   void PrintAckReceptionNonDebug(const char* packetType, ReceiverHeader rh);
@@ -122,10 +133,10 @@ private:
   void PrintStats() const;
   bool AckIsValid(DWORD ack, bool isFin) const;
   void StartTimer();
-  void StopTimer();
   void RecordRto(float rtt);
   void WaitUntilConnectedOrAborted();
   void WaitUntilDisconnectedOrAborted();
+  float GetTimeStamp(int sequence);
 
   const char* Ip() const { return inet_ntoa(Remote.sin_addr); }
   float Time() const { return static_cast<float>(timeGetTime() - ConstructionTime) / 1000; }
