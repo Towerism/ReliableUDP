@@ -71,9 +71,12 @@ struct ReceiverHeader {
 
 struct PacketBufferElement
 {
+  PacketBufferElement(std::string pkt, size_t pktLength, float timeStamp, bool retransmitted) : Packet(pkt), PacketLength(pktLength), TimeStamp(timeStamp), Retransmitted(retransmitted) {}
+  PacketBufferElement() : PacketBufferElement("", 0, 0, false) {}
   std::string Packet;
   size_t PacketLength;
   float TimeStamp;
+  bool Retransmitted;
 };
 
 class SenderSocket
@@ -136,6 +139,7 @@ private:
   void RecordRto(float rtt);
   void WaitUntilConnectedOrAborted();
   void WaitUntilDisconnectedOrAborted();
+  PacketBufferElement& GetPacketBufferElement(int sequence);
   float GetTimeStamp(int sequence);
 
   const char* Ip() const { return inet_ntoa(Remote.sin_addr); }

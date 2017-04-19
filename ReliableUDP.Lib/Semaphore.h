@@ -21,6 +21,8 @@ public:
   // Put a resource back
   void UnWait();
 
+  int GetResources() const { return resources; }
+
 private:
   std::atomic<int> resources;
   std::condition_variable cv;
