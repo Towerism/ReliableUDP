@@ -125,7 +125,9 @@ private:
   bool KillAckThread = false;
   std::vector<PacketBufferElement> PacketBuffer;
   std::atomic<float> OldRttDeviation = 0, RttDeviation = 0, OldEstimatedRtt = 0, EstimatedRtt = 0, TimeMark;
-  size_t TotalTimeoutsSnapshot = 0;
+  size_t AllTimeoutsSnapshot = 0;
+  std::atomic<size_t> TotalFastRetransmissions = 0;
+  size_t Dupacks = 0;
   float Timeout = 1;
 
   bool RemoteInfoFromHost(const char* host, DWORD port);

@@ -87,7 +87,7 @@ int main(int argc, char* argv[])
   auto bytesSent = (float)(byteBufferSize);
   auto maxPacketSize = (float)(MAX_PKT_SIZE);
   auto packetsSent = ceil(bytesSent / maxPacketSize);
-  auto idealRate = bitsTransferred / packetsSent / static_cast<float>(ss.GetEstRTT()) / BITS_IN_KILOBIT;
+  auto idealRate = bitsTransferred / packetsSent / static_cast<float>(ss.GetEstRTT()) / BITS_IN_KILOBIT * args.WindowSize;
   mainInfo("estRTT %.3f, ideal rate %.2f Kbps\n", ss.GetEstRTT(), idealRate);
   return 0;
 }

@@ -12,7 +12,7 @@
 #define ALPHA 0.125
 
 SenderSocket::SenderSocket() 
-  : ConstructionTime(timeGetTime()), SenderBase(-1), NextSequence(0), SenderWindow(1), EmptySlots(1), EffectiveWindow(1), PacketBuffer(1), FullSlots(0)
+  : ConstructionTime(timeGetTime()), SenderBase(-1), NextSequence(0), SenderWindow(1), FullSlots(0), EmptySlots(1), EffectiveWindow(1), PacketBuffer(1)
 {
   WSADATA wsaData;
   WORD wVersionRequested = MAKEWORD(2, 2);
@@ -122,8 +122,7 @@ bool SenderSocket::SendPacket(const char* pkt, size_t pktLength, bool bypassSema
   SenderDataHeader* sdh = (SenderDataHeader*)pkt;
   if (!bypassSemaphore)
     sdh->Sequence = CurrentSequence.load();
-  PrintDebug("[%6.3f] --> \n", Time());
-  PrintDebug("Magic: %llu\n", sdh->Flags.Magic);
+  PrintDebug("[%6.3f] --> ", Time());
   if (sdh->Flags.Fin)
   {
     PrintSendAttempt("FIN", sdh->Sequence, MAX_RETX, Timeouts + 1);
@@ -169,7 +168,7 @@ bool SenderSocket::SendPacket(const char* pkt, size_t pktLength, bool bypassSema
 
 float SenderSocket::CalculateTimeout()
 {
-  Timeout = GetTimeStamp(SenderBase) + .2;
+  Timeout = GetTimeStamp(SenderBase) + Rto;
   return Timeout;
 }
 
@@ -195,7 +194,7 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
     }
     ReceiverHeader* rh = (ReceiverHeader*)packet;
     if (AckIsValid(rh->AckSequence, rh->Flags.Fin)) {
-      if (TotalTimeoutsSnapshot == TotalTimeouts) {
+      if (AllTimeoutsSnapshot == TotalTimeouts + TotalFastRetransmissions) {
         EstimatedRtt = Time() - GetTimeStamp(rh->AckSequence - 1);
         if (EstimatedRtt > 1) {
 #ifndef DEBUG
@@ -205,16 +204,23 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
         RecordRto(EstimatedRtt);
       } else
       {
-        TotalTimeoutsSnapshot = TotalTimeouts;
+        AllTimeoutsSnapshot = TotalTimeouts + TotalFastRetransmissions;
       }
       return STATUS_OK;
+    }
+    if (rh->AckSequence == SenderBase)
+    {
+      ++Dupacks;
+      if (Dupacks == 3)
+      {
+        return FAST_RETX;
+      }
     }
     if (!FinSent) {
       remainder = CalculateTimeout() - Time();
       timeout.tv_sec = remainder;
       timeout.tv_usec = (remainder - timeout.tv_sec) * 1000000;
     }
-    return INVALID_ACK;
   }
   if (err == SOCKET_ERROR)
   {
@@ -327,23 +333,24 @@ void SenderSocket::AckPackets()
       if (!FinSent)
         FullSlots.Wait();
       receiveResult = ReceivePacket((char*)(&rh), sizeof(rh), true);
-      if (receiveResult == INVALID_ACK) {
-        FullSlots.UnWait();
-        continue;
-      }
       std::unique_lock<std::mutex> lock(Mutex);
-      if (receiveResult == TIMEOUT)
+      if (receiveResult == TIMEOUT) {
+        auto& bufferElem = GetPacketBufferElement(SenderBase);
+        ++Timeouts;
+        ++TotalTimeouts;
+        SenderDataHeader* sdh = (SenderDataHeader*)bufferElem.Packet.data();
+        lock.unlock();
+        lock.release();
+        SendPacket(bufferElem.Packet.data(), bufferElem.PacketLength, true, SenderBase);
+      } else if (receiveResult == FAST_RETX)
       {
-        {
-          auto& bufferElem = GetPacketBufferElement(SenderBase);
-          ++Timeouts;
-          ++TotalTimeouts;
-          SenderDataHeader* sdh = (SenderDataHeader*)bufferElem.Packet.data();
-          auto sequence = sdh->Sequence;
-          lock.unlock();
-          lock.release();
-          SendPacket(bufferElem.Packet.data(), bufferElem.PacketLength, true, sequence);
-        }
+        Timeouts = 0;
+        auto& bufferElem = GetPacketBufferElement(SenderBase);
+        ++TotalFastRetransmissions;
+        SenderDataHeader* sdh = (SenderDataHeader*)bufferElem.Packet.data();
+        lock.unlock();
+        lock.release();
+        SendPacket(bufferElem.Packet.data(), bufferElem.PacketLength, true, SenderBase);
       } else if (receiveResult != STATUS_OK) {
         Status = receiveResult;
         Connected = false;
@@ -359,13 +366,14 @@ void SenderSocket::AckPackets()
         EmptySlots.Signal();
         return;
       }
-      if (receiveResult != TIMEOUT) {
+      if (receiveResult != TIMEOUT && receiveResult != FAST_RETX) {
         lock.unlock();
         lock.release();
       }
     } while (receiveResult != STATUS_OK);
     if (AckIsValid(rh.AckSequence, rh.Flags.Fin)) {
       std::unique_lock<std::mutex> lock(Mutex);
+      Dupacks = 0;
       Timeouts = 0;
       auto base = max((int)SenderBase, 0);
       ++NextSequence;
@@ -421,7 +429,7 @@ void SenderSocket::PrintStats() const
     auto megabitsAcked = megabytesAcked * BITS_IN_BYTE;
     auto elapsedTime = Time() - TransferTimeStart;
     auto rate = megabitsAcked / elapsedTime;
-    printf("[%2llu] B %6d (%5.1f MB) N %6d T %zu F %d W %d S %.3f Mbps RTT %.3f\n", seconds, SenderBase.load(), megabytesAcked, NextSequence.load(), TotalTimeouts.load(), 0, EffectiveWindow.load(), rate, EstimatedRtt.load());
+    printf("[%2llu] B %6d (%5.1f MB) N %6d T %zu F %zu W %d S %.3f Mbps RTT %.3f\n", seconds, SenderBase.load(), megabytesAcked, NextSequence.load(), TotalTimeouts.load(), TotalFastRetransmissions.load(), EffectiveWindow.load(), rate, EstimatedRtt.load());
     seconds += interval;
   }
 }
