@@ -198,7 +198,7 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
         EstimatedRtt = Time() - GetTimeStamp(rh->AckSequence - 1);
         if (EstimatedRtt > 1) {
 #ifndef DEBUG
-          printf("[%6.3f] ACK %d TX time y-1 %6.3f estRTT %.3f B %d RETX %s\n", Time(), rh->AckSequence, GetTimeStamp(rh->AckSequence - 1), EstimatedRtt.load(), SenderBase.load(), (GetPacketBufferElement(rh->AckSequence - 1).Retransmitted) ? "Yes" : "No");
+          //printf("[%6.3f] ACK %d TX time y-1 %6.3f estRTT %.3f B %d RETX %s\n", Time(), rh->AckSequence, GetTimeStamp(rh->AckSequence - 1), EstimatedRtt.load(), SenderBase.load(), (GetPacketBufferElement(rh->AckSequence - 1).Retransmitted) ? "Yes" : "No");
 #endif
         }
         RecordRto(EstimatedRtt);
