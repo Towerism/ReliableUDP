@@ -195,7 +195,7 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
     }
     ReceiverHeader* rh = (ReceiverHeader*)packet;
     if (AckIsValid(rh->AckSequence, rh->Flags.Fin)) {
-      if (!GetPacketBufferElement(rh->AckSequence - 1).Retransmitted) {
+      if (TotalTimeoutsSnapshot == TotalTimeouts) {
         EstimatedRtt = Time() - GetTimeStamp(rh->AckSequence - 1);
         if (EstimatedRtt > 1) {
 #ifndef DEBUG
@@ -203,6 +203,9 @@ int SenderSocket::ReceivePacket(char* packet, size_t packetLength, bool printTim
 #endif
         }
         RecordRto(EstimatedRtt);
+      } else
+      {
+        TotalTimeoutsSnapshot = TotalTimeouts;
       }
       return STATUS_OK;
     }
