@@ -1,0 +1,38 @@
+#+OPTIONS: toc:nil num:nil
+#+AUTHOR: Martin Fracker
+#+LATEX_HEADER: \usepackage[margin=1in]{geometry}
+#+TITLE: ReliableUDP Report
+
+* Goodput vs. Window Size
+With a window size of 1, we get a rate of $\alpha$. All other things remaining
+constant, in class we discussed that the rate $\alpha$ under ideal conditions,
+i.e. no loss, should double whenever we double the window size. This is roughly
+what I observed as can be seen in Figure [[fig:window-vs-goodput]].
+
+* Goodput vs. RTT
+With an rtt of 10ms, we get a rate of $\alpha$. All other things remaining
+constant, in class we discussed that the rate $\alpha$ under ideal conditions,
+i.e. no loss, should halve whenever the rtt is doubled. This is roughly what I
+observed as can be seen in Figure [[fig:rtt-vs-goodput]].
+
+* Dummy Server
+I can get up to .6 Gbps with the standard packet size. If I use 9KB packets, I
+can reach about 3 Gbps. My CPU configuration is an Intel 4770K overclocked to
+4.0GHz. I suspect that my program is not as efficient as it could be.
+
+* Loss in the Reverse Direction
+I stabilized at around 9.3 Mbps with p=0.1 in the reverse direction. I
+stabilized at around 9.3 Mbps (the same) with no loss in either direction. My
+protocol exhibits similar performace in both cases due to cumulative ACKs.
+Neither case causes any timeouts or retransmissions. 
+* Receiver Window Change Advertisement
+It appears the receiver window goes straight into congestion avoidance. The
+upperbound on the receiver window is 80000.
+
+#+Name: fig:window-vs-goodput
+#+Caption: The goodput is shown to roughly scale exponentially with window size.
+[[./img/window-vs-goodput.png]]
+
+#+Name: fig:rtt-vs-goodput
+#+Caption: The goodput is shown to decrease very quickly as rtt increases.
+[[./img/rtt-vs-goodput.png]]
